@@ -1,0 +1,475 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>회귀 학습 단계별 시뮬레이터</title>
+    <style>
+        :root {
+            --primary: #3b82f6; --success: #22c55e; --danger: #ef4444; 
+            --warning: #f59e0b; --gray: #64748b; --light-gray: #e2e8f0; --bg: #f8fafc;
+        }
+        * { box-sizing: border-box; }
+        body {
+            font-family: 'Pretendard', -apple-system, sans-serif;
+            margin: 0; padding: 15px; background-color: var(--bg); color: #0f172a;
+        }
+        .container {
+            width: 100%; max-width: 700px; margin: 0 auto;
+            background: white; padding: 15px; border-radius: 12px; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1);
+        }
+        h1 { font-size: 1.3rem; text-align: center; margin: 5px 0 15px 0; }
+        
+        .step-indicator {
+            background-color: #eff6ff; padding: 12px; border-radius: 8px; 
+            font-weight: bold; color: #1e3a8a; margin-bottom: 15px;
+            display: flex; justify-content: space-between; align-items: center;
+        }
+        
+        .canvas-container {
+            width: 100%; aspect-ratio: 16 / 9; background-color: #ffffff; 
+            border: 2px solid var(--light-gray); border-radius: 8px; position: relative;
+        }
+        canvas { width: 100%; height: 100%; }
+
+        /* 조작 패널 공통 */
+        .panel {
+            background: #f1f5f9; padding: 15px; border-radius: 8px; margin-top: 15px;
+            display: none; 
+        }
+        
+        .hint-box {
+            background-color: #fef2f2; border-left: 4px solid var(--danger);
+            padding: 10px 12px; margin-bottom: 15px; border-radius: 4px;
+            font-size: 0.9rem; font-weight: bold; color: #991b1b;
+        }
+
+        .slider-row { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; }
+        .slider-row:last-child { margin-bottom: 0; }
+        .slider-label { width: 90px; font-weight: bold; font-size: 0.9rem; }
+        .slider-val { width: 60px; text-align: right; font-family: monospace; font-size: 1rem; color: var(--primary); font-weight: bold; }
+        input[type=range] { flex: 1; accent-color: var(--primary); }
+
+        /* 데이터 표 영역 */
+        .table-container {
+            margin-top: 15px; overflow-x: auto; display: none;
+            border: 1px solid var(--light-gray); border-radius: 8px;
+        }
+        table { width: 100%; border-collapse: collapse; font-size: 0.75rem; text-align: center; min-width: 600px; }
+        th, td { border: 1px solid var(--light-gray); padding: 6px 4px; }
+        th { background-color: #f8fafc; font-weight: bold; }
+        .col-1st { background-color: #f0fdf4; } 
+        .col-2nd { background-color: #fffbeb; } 
+        
+        /* 6단계 최종 정답 패널 */
+        .final-panel {
+            background-color: #f0fdfa; border: 2px solid #14b8a6;
+            padding: 15px; border-radius: 8px; margin-top: 15px; text-align: center;
+            display: none;
+        }
+        .final-title { font-weight: bold; color: #0f766e; margin-bottom: 10px; font-size: 1.05rem; }
+        .final-formula { font-size: 1.15rem; font-family: monospace; font-weight: bold; color: #0d9488; background: white; padding: 8px; border-radius: 6px; display: inline-block; margin-bottom: 15px;}
+        .final-calc { font-size: 1rem; color: #115e59; background: white; padding: 15px; border-radius: 8px; box-shadow: inset 0 2px 4px rgba(0,0,0,0.05);}
+        .pred-input {
+            width: 80px; padding: 6px; font-size: 1rem; text-align: center; font-weight: bold;
+            border: 2px solid var(--primary); border-radius: 4px; margin: 0 5px;
+        }
+        .btn-check {
+            background-color: var(--primary); color: white; border: none; 
+            padding: 8px 15px; border-radius: 4px; cursor: pointer; font-weight: bold;
+        }
+        .btn-check:active { opacity: 0.8; }
+
+        .controls { display: flex; gap: 10px; margin-top: 15px; }
+        button.nav-btn {
+            flex: 1; padding: 12px; font-size: 1rem; font-weight: bold;
+            border: none; border-radius: 8px; cursor: pointer; color: white;
+            transition: opacity 0.2s;
+        }
+        button:disabled { opacity: 0.4; cursor: not-allowed; }
+        .btn-prev { background-color: var(--gray); }
+        .btn-next { background-color: var(--primary); }
+
+        .equation-box {
+            text-align: center; font-size: 1.1rem; font-family: monospace; 
+            font-weight: bold; margin-top: 10px;
+        }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <h1>회귀 학습 실습 시뮬레이터</h1>
+    
+    <div class="step-indicator">
+        <span id="step-title">[1단계] 좌표 평면에 점 표시하기</span>
+        <span id="step-counter">1 / 6</span>
+    </div>
+
+    <div class="canvas-container">
+        <canvas id="simCanvas"></canvas>
+    </div>
+
+    <!-- 2/4단계: 슬라이더 패널 -->
+    <div class="panel" id="slider-panel">
+        <div id="hint-container" class="hint-box" style="display: none;">
+            <!-- 4단계에서 힌트 표시 -->
+        </div>
+        <div style="font-size: 0.85rem; color: var(--gray); margin-bottom: 10px;" id="slider-desc">
+            * 슬라이더를 움직여 최적의 선이라고 생각되는 위치를 잡아보세요.
+        </div>
+        <div class="slider-row">
+            <div class="slider-label">가중치 (w)</div>
+            <input type="range" id="w-slider" min="0" max="10" step="0.01" value="0">
+            <div class="slider-val" id="w-val">0.00</div>
+        </div>
+        <div class="slider-row">
+            <div class="slider-label">편향 (b)</div>
+            <input type="range" id="b-slider" min="0" max="30" step="0.01" value="0">
+            <div class="slider-val" id="b-val">0.00</div>
+        </div>
+        <div class="equation-box" id="eq-display" style="color: var(--success);">y = 0.00x + 0.00</div>
+    </div>
+
+    <div class="table-container" id="table-panel">
+        <table>
+            <thead>
+                <tr>
+                    <th rowspan="2">충전량(x)</th>
+                    <th rowspan="2">거리(y)</th>
+                    <th colspan="3" class="col-1st">1차 결과 (y₁)<br><span id="th-eq1" style="font-weight:normal; font-size:0.9em; color:#15803d;"></span></th>
+                    <th colspan="3" class="col-2nd">2차 결과 (y₂)<br><span id="th-eq2" style="font-weight:normal; font-size:0.9em; color:#a16207;"></span></th>
+                </tr>
+                <tr>
+                    <th class="col-1st">예측(y₁)</th><th class="col-1st">오차</th><th class="col-1st">오차²</th>
+                    <th class="col-2nd">예측(y₂)</th><th class="col-2nd">오차</th><th class="col-2nd">오차²</th>
+                </tr>
+            </thead>
+            <tbody id="table-body">
+            </tbody>
+            <tfoot>
+                <tr style="font-weight: bold; background: #f1f5f9;">
+                    <td colspan="2">평균 (MSE)</td>
+                    <td colspan="2" class="col-1st"></td>
+                    <td class="col-1st" id="mse-1">-</td>
+                    <td colspan="2" class="col-2nd"></td>
+                    <td class="col-2nd" id="mse-2">-</td>
+                </tr>
+            </tfoot>
+        </table>
+    </div>
+
+    <!-- 6단계: 최종 정답 패널 -->
+    <div class="final-panel" id="final-panel">
+        <div class="final-title">🎉 인공지능이 계산한 최적의 정답 (수학적 모델)</div>
+        <div class="final-formula">y = 4.04x + 8.79</div>
+        <div class="final-calc">
+            <div style="margin-bottom: 10px; font-weight: bold;">8번 차량(65%) 예측 거리를 직접 계산해 보세요:</div>
+            <strong>4.04 × 65 + 8.79 = </strong>
+            <input type="number" id="student-pred" class="pred-input" step="0.01" placeholder="?"> <strong>km</strong>
+            <button id="btn-check-pred" class="btn-check">확인</button>
+            <div id="pred-feedback" style="margin-top: 15px; font-weight: bold; font-size: 1.1rem; height: 1.5rem;"></div>
+        </div>
+    </div>
+
+    <div class="controls">
+        <button id="btn-prev" class="nav-btn btn-prev" disabled>이전 단계</button>
+        <button id="btn-next" class="nav-btn btn-next">다음 단계</button>
+    </div>
+</div>
+
+<script>
+    const canvas = document.getElementById('simCanvas');
+    const ctx = canvas.getContext('2d');
+    
+    let cWidth = 800;
+    let cHeight = 450;
+    canvas.width = cWidth;
+    canvas.height = cHeight;
+
+    const trainData = [
+        { x: 20, y: 92 }, { x: 30, y: 127 }, { x: 40, y: 171 },
+        { x: 50, y: 208 }, { x: 60, y: 254 }, { x: 70, y: 289 }, { x: 80, y: 333 }
+    ];
+    const targetX = 65;
+
+    // 인공지능이 계산한 실제 수학적 최적값 (반올림)
+    const OPT_W = 4.04;
+    const OPT_B = 8.79;
+    const CORRECT_PRED = 271.39; // 4.04 * 65 + 8.79
+
+    let currentStep = 1;
+    let w1 = 0, b1 = 0; 
+    let w2 = 0, b2 = 0; 
+    
+    const stepTitle = document.getElementById('step-title');
+    const stepCounter = document.getElementById('step-counter');
+    const btnPrev = document.getElementById('btn-prev');
+    const btnNext = document.getElementById('btn-next');
+    
+    const sliderPanel = document.getElementById('slider-panel');
+    const tablePanel = document.getElementById('table-panel');
+    const finalPanel = document.getElementById('final-panel');
+    const hintContainer = document.getElementById('hint-container');
+    const sliderDesc = document.getElementById('slider-desc');
+    
+    const wSlider = document.getElementById('w-slider');
+    const bSlider = document.getElementById('b-slider');
+    const wVal = document.getElementById('w-val');
+    const bVal = document.getElementById('b-val');
+    const eqDisplay = document.getElementById('eq-display');
+    const thEq1 = document.getElementById('th-eq1');
+    const thEq2 = document.getElementById('th-eq2');
+
+    const tableBody = document.getElementById('table-body');
+    const mse1El = document.getElementById('mse-1');
+    const mse2El = document.getElementById('mse-2');
+    
+    const btnCheckPred = document.getElementById('btn-check-pred');
+    const studentPred = document.getElementById('student-pred');
+    const predFeedback = document.getElementById('pred-feedback');
+
+    const stepTitles = [
+        "[1단계] 좌표 평면에 점 표시하기",
+        "[2단계] 1차 직선 설정하기 (가중치/편향)",
+        "[3단계] 1차 오차(MSE) 수식 확인",
+        "[4단계] 힌트를 참고하여 2차 직선 수정하기",
+        "[5단계] 2차 오차 확인 및 비교",
+        "[6단계] 최종 예측 정답 계산하기"
+    ];
+
+    function initTable() {
+        tableBody.innerHTML = '';
+        trainData.forEach((d, i) => {
+            let tr = document.createElement('tr');
+            tr.innerHTML = `
+                <td>${d.x}%</td>
+                <td>${d.y}</td>
+                <td class="col-1st" id="y1-${i}">-</td>
+                <td class="col-1st" id="err1-${i}">-</td>
+                <td class="col-1st" id="sqerr1-${i}">-</td>
+                <td class="col-2nd" id="y2-${i}">-</td>
+                <td class="col-2nd" id="err2-${i}">-</td>
+                <td class="col-2nd" id="sqerr2-${i}">-</td>
+            `;
+            tableBody.appendChild(tr);
+        });
+    }
+
+    function updateTableColumn(w, b, isFirst) {
+        let totalSqErr = 0;
+        trainData.forEach((d, i) => {
+            let pred = w * d.x + b;
+            let err = d.y - pred;
+            let sqErr = err * err;
+            totalSqErr += sqErr;
+
+            if (isFirst) {
+                document.getElementById(`y1-${i}`).textContent = pred.toFixed(2);
+                document.getElementById(`err1-${i}`).textContent = err.toFixed(2);
+                document.getElementById(`sqerr1-${i}`).textContent = sqErr.toFixed(2);
+            } else {
+                document.getElementById(`y2-${i}`).textContent = pred.toFixed(2);
+                document.getElementById(`err2-${i}`).textContent = err.toFixed(2);
+                document.getElementById(`sqerr2-${i}`).textContent = sqErr.toFixed(2);
+            }
+        });
+        
+        let mse = (totalSqErr / trainData.length).toFixed(2);
+        if (isFirst) {
+            mse1El.textContent = mse;
+            thEq1.textContent = `(y = ${w.toFixed(2)}x + ${b.toFixed(2)})`;
+        } else {
+            mse2El.textContent = mse;
+            thEq2.textContent = `(y = ${w.toFixed(2)}x + ${b.toFixed(2)})`;
+        }
+    }
+
+    function getCanvasX(val) { return (val / 100) * (cWidth - 60) + 40; }
+    function getCanvasY(val) { return cHeight - 40 - (val / 400) * (cHeight - 60); }
+
+    function drawCanvas() {
+        ctx.clearRect(0, 0, cWidth, cHeight);
+
+        ctx.strokeStyle = '#e2e8f0'; ctx.lineWidth = 1;
+        ctx.font = '12px sans-serif'; ctx.fillStyle = '#64748b';
+        ctx.textAlign = 'center';
+
+        for (let i = 0; i <= 10; i++) {
+            let x = i * 10; let cx = getCanvasX(x);
+            ctx.beginPath(); ctx.moveTo(cx, 20); ctx.lineTo(cx, cHeight - 40); ctx.stroke();
+            ctx.fillText(x, cx, cHeight - 20);
+        }
+        ctx.textAlign = 'right';
+        for (let i = 0; i <= 8; i++) {
+            let y = i * 50; let cy = getCanvasY(y);
+            ctx.beginPath(); ctx.moveTo(40, cy); ctx.lineTo(cWidth - 20, cy); ctx.stroke();
+            ctx.fillText(y, 35, cy + 4);
+        }
+
+        ctx.strokeStyle = '#0f172a'; ctx.lineWidth = 2;
+        ctx.beginPath(); ctx.moveTo(40, 20); ctx.lineTo(40, cHeight - 40); ctx.lineTo(cWidth - 20, cHeight - 40); ctx.stroke();
+
+        if (currentStep >= 1) {
+            ctx.fillStyle = '#3b82f6';
+            trainData.forEach(d => {
+                ctx.beginPath(); ctx.arc(getCanvasX(d.x), getCanvasY(d.y), 6, 0, Math.PI*2); ctx.fill();
+            });
+        }
+
+        if (currentStep == 2 || currentStep == 3) {
+            drawLine(w1, b1, '#22c55e', currentStep == 3);
+        }
+
+        if (currentStep >= 4) {
+            ctx.setLineDash([5, 5]);
+            drawLine(w1, b1, '#94a3b8', false);
+            ctx.setLineDash([]);
+            drawLine(w2, b2, '#eab308', currentStep >= 5);
+        }
+
+        if (currentStep == 6) {
+            drawLine(OPT_W, OPT_B, '#ef4444', false);
+            
+            let predY = OPT_W * targetX + OPT_B;
+            let cx = getCanvasX(targetX); let cy = getCanvasY(predY);
+            
+            ctx.setLineDash([4, 4]); ctx.strokeStyle = '#ef4444'; ctx.lineWidth = 2;
+            ctx.beginPath(); ctx.moveTo(cx, cHeight - 40); ctx.lineTo(cx, cy); ctx.lineTo(40, cy); ctx.stroke();
+            ctx.setLineDash([]);
+            
+            ctx.fillStyle = '#ef4444';
+            ctx.fillRect(cx - 6, cy - 6, 12, 12);
+            ctx.fillText(`정답 (${targetX}%, ???km)`, cx + 70, cy - 15);
+        }
+    }
+
+    function drawLine(w, b, color, drawErrors) {
+        if(w === 0 && b === 0) return;
+        
+        ctx.strokeStyle = color; ctx.lineWidth = 3;
+        ctx.beginPath();
+        ctx.moveTo(getCanvasX(0), getCanvasY(b));
+        ctx.lineTo(getCanvasX(100), getCanvasY(w * 100 + b));
+        ctx.stroke();
+
+        if (drawErrors) {
+            ctx.strokeStyle = '#ef4444'; ctx.lineWidth = 1;
+            trainData.forEach(d => {
+                let predY = w * d.x + b;
+                ctx.beginPath();
+                ctx.moveTo(getCanvasX(d.x), getCanvasY(d.y));
+                ctx.lineTo(getCanvasX(d.x), getCanvasY(predY));
+                ctx.stroke();
+            });
+        }
+    }
+
+    function generateHint(w, b) {
+        let hintW = w < OPT_W ? "키우고" : "줄이고";
+        let hintB = b < OPT_B ? "키우면" : "줄이면";
+        
+        if (Math.abs(w - OPT_W) < 0.2) hintW = "유지하거나 살짝만 조정하고";
+        if (Math.abs(b - OPT_B) < 1.0) hintB = "유지하거나 살짝만 조정하면";
+
+        return `💡 힌트: 1차 결과보다 가중치(w)를 더 <u>${hintW}</u>, 편향(b)을 더 <u>${hintB}</u> 오차가 줄어듭니다!`;
+    }
+
+    function updateStep() {
+        stepTitle.textContent = stepTitles[currentStep - 1];
+        stepCounter.textContent = `${currentStep} / 6`;
+        
+        btnPrev.disabled = currentStep === 1;
+        btnNext.disabled = currentStep === 6;
+
+        sliderPanel.style.display = 'none';
+        tablePanel.style.display = 'none';
+        finalPanel.style.display = 'none';
+        hintContainer.style.display = 'none';
+        
+        predFeedback.textContent = ""; // 6단계 피드백 초기화
+        studentPred.value = "";
+
+        if (currentStep === 2) {
+            sliderPanel.style.display = 'block';
+            sliderDesc.textContent = "* 슬라이더를 움직여 최적의 선이라고 생각되는 위치를 잡아보세요.";
+            setSliders(w1, b1);
+            eqDisplay.style.color = '#22c55e';
+        } else if (currentStep === 3) {
+            tablePanel.style.display = 'block';
+            updateTableColumn(w1, b1, true);
+        } else if (currentStep === 4) {
+            sliderPanel.style.display = 'block';
+            hintContainer.style.display = 'block';
+            sliderDesc.textContent = "* 힌트를 참고하여 1차 때보다 더 오차가 적은 선을 만들어보세요.";
+            hintContainer.innerHTML = generateHint(w1, b1);
+            
+            if (w2 === 0 && b2 === 0) { w2 = w1; b2 = b1; }
+            setSliders(w2, b2);
+            eqDisplay.style.color = '#eab308';
+        } else if (currentStep === 5) {
+            tablePanel.style.display = 'block';
+            updateTableColumn(w2, b2, false);
+        } else if (currentStep === 6) {
+            tablePanel.style.display = 'block';
+            finalPanel.style.display = 'block';
+        }
+        
+        drawCanvas();
+    }
+
+    function setSliders(w, b) {
+        wSlider.value = w; bSlider.value = b;
+        wVal.textContent = w.toFixed(2); bVal.textContent = b.toFixed(2);
+        eqDisplay.textContent = `y = ${w.toFixed(2)}x + ${b.toFixed(2)}`;
+    }
+
+    wSlider.addEventListener('input', (e) => {
+        let val = parseFloat(e.target.value);
+        wVal.textContent = val.toFixed(2);
+        if (currentStep === 2) w1 = val; else w2 = val;
+        updateSliderVisuals();
+    });
+
+    bSlider.addEventListener('input', (e) => {
+        let val = parseFloat(e.target.value);
+        bVal.textContent = val.toFixed(2);
+        if (currentStep === 2) b1 = val; else b2 = val;
+        updateSliderVisuals();
+    });
+
+    function updateSliderVisuals() {
+        let w = currentStep === 2 ? w1 : w2;
+        let b = currentStep === 2 ? b1 : b2;
+        eqDisplay.textContent = `y = ${w.toFixed(2)}x + ${b.toFixed(2)}`;
+        drawCanvas();
+    }
+    
+    // 정답 확인 로직
+    btnCheckPred.addEventListener('click', () => {
+        let studentAns = parseFloat(studentPred.value);
+        if (isNaN(studentAns)) {
+            predFeedback.textContent = "값을 정확히 입력해 주세요.";
+            predFeedback.style.color = "var(--danger)";
+            return;
+        }
+        
+        // 부동소수점 오차 감안하여 차이가 0.01 이내면 정답 처리
+        if (Math.abs(studentAns - CORRECT_PRED) <= 0.01) {
+            predFeedback.textContent = "맞았습니다! 🎉 훌륭하게 예측을 완료했어요.";
+            predFeedback.style.color = "var(--success)";
+        } else {
+            predFeedback.textContent = "틀렸습니다. 계산식을 다시 한 번 확인해 보세요! 🤔";
+            predFeedback.style.color = "var(--danger)";
+        }
+    });
+
+    btnNext.addEventListener('click', () => { if (currentStep < 6) { currentStep++; updateStep(); } });
+    btnPrev.addEventListener('click', () => { if (currentStep > 1) { currentStep--; updateStep(); } });
+
+    initTable();
+    updateStep();
+</script>
+
+</body>
+</html>
